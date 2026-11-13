@@ -1,0 +1,70 @@
+name: Build APK
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cari dan ekstrak file zip project
+        run: |
+          set -e
+          ZIPFILE=$(find . -maxdepth 1 -iname "*.zip" | head -n 1)
+          if [ -z "$ZIPFILE" ]; then
+            echo "TIDAK ADA file .zip di root repo. Upload file zip project ke root repo dulu."
+            exit 1
+          fi
+          echo "Memakai file zip: $ZIPFILE"
+          mkdir -p proj
+          unzip -o "$ZIPFILE" -d proj
+          echo "Isi folder proj setelah ekstrak:"
+          find proj -maxdepth 2
+
+      - name: Pastikan struktur Gradle ada
+        run: |
+          set -e
+          if [ ! -f proj/settings.gradle ] && [ ! -f proj/build.gradle ]; then
+            echo "GAGAL: settings.gradle / build.gradle tidak ditemukan tepat di dalam zip (root)."
+            echo "Isi folder proj:"
+            find proj -maxdepth 3
+            exit 1
+          fi
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.9'
+
+      - name: Build debug APK
+        working-directory: proj
+        run: gradle assembleDebug --stacktrace --info
+
+      - name: Pastikan APK berhasil dibuat
+        run: |
+          set -e
+          APK=proj/app/build/outputs/apk/debug/app-debug.apk
+          if [ ! -f "$APK" ]; then
+            echo "GAGAL: APK tidak ditemukan di $APK"
+            find proj/app/build -maxdepth 4 || true
+            exit 1
+          fi
+          echo "APK berhasil dibuat: $APK"
+          ls -la "$APK"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GeoMonitor-debug-apk
+          path: proj/app/build/outputs/apk/debug/app-debug.apk
